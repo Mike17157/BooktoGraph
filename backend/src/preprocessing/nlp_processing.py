@@ -1,25 +1,28 @@
 import spacy
+import anthropic
+from typing import List
+import os
 
-nlp = spacy.load("en_core_web_sm")
+# Initialize the Anthropic client
+client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
 
-def process_text(text):
-    doc = nlp(text)
-    return doc
-
-def extract_entities(doc):
-    entities = [(ent.text, ent.label_) for ent in doc.ents]
-    return entities
-
-def extract_key_concepts(doc):
-    # This is a simple implementation. You might want to refine this based on your needs.
-    concepts = [token.text for token in doc if token.pos_ in ['NOUN', 'PROPN'] and not token.is_stop]
-    return list(set(concepts))  # Remove duplicates
-
-def analyze_text(text):
-    doc = process_text(text)
-    entities = extract_entities(doc)
-    concepts = extract_key_concepts(doc)
-    return {
-        'entities': entities,
-        'concepts': concepts
-    }
+def batch_correct_text(texts: List[str], batch_size: int = 10) -> List[str]:
+    corrected_texts = []
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i+batch_size]
+        prompt = "Human: Correct any obvious errors in the following texts without changing their meaning or adding new information. Separate each corrected text with '---'.\n\n"
+        for text in batch:
+            prompt += f"Text: {text}\n\n"
+        prompt += "Assistant: Here are the corrected texts, separated by '---':\n\n"
+        
+        response = client.completions.create(
+            model="claude-2.0-haiku",
+            prompt=prompt,
+            max_tokens_to_sample=1000 * len(batch),
+            temperature=0.3,
+        )
+        
+        corrected_batch = response.completion.strip().split("---")
+        corrected_texts.extend([text.strip() for text in corrected_batch])
+    
+    return corrected_texts
